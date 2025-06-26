@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "881460781297",
+    "project_id": "lpggasmonitor-e811a",
+    "storage_bucket": "lpggasmonitor-e811a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:881460781297:android:7796c5803bff1210f80950",
+        "android_client_info": {
+          "package_name": "com.example.lpg_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9MrG4QSySb-YQRj8nUP_r70KCgS4glOg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
