@@ -165,6 +165,12 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
                         '${gasPercentage.toStringAsFixed(1)}%',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 30.0),
                       ),
+                      // NEW: Display Current Gas Weight in KG
+                      const SizedBox(height: 4), // Small spacer
+                      Text(
+                        '${(currentWeightKg - (widget.emptyWeight / 1000)).toStringAsFixed(2)} kg', // Only show actual gas weight
+                        style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 18.0, color: Colors.black54),
+                      ),
                     ],
                   ),
                   footer: Padding(
@@ -228,7 +234,6 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
                 ),
                 const SizedBox(height: 15),
                 Text(
-                  // Using the new helper for Last Updated
                   'Last Updated: ${_formatTimestampForDisplay(device.timestamp, format: 'MMM dd, yyyy - HH:mm:ss')}',
                   style: const TextStyle(fontSize: 14, color: Colors.grey),
                   textAlign: TextAlign.center,
@@ -266,7 +271,6 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
                         _buildDetailRow('Owner ID:', device.ownerId),
                         _buildDetailRow('Empty Weight:', '${(device.emptyWeight / 1000).toStringAsFixed(2)} kg'),
                         _buildDetailRow('Full Weight:', '${(device.fullWeight / 1000).toStringAsFixed(2)} kg'),
-                        // Using the new helper for Added On
                         _buildDetailRow('Added On:', _formatTimestampForDisplay(device.createdAt)),
                       ],
                     ),

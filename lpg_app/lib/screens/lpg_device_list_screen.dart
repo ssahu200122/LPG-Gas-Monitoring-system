@@ -75,6 +75,35 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
     return percentage.clamp(0.0, 100.0);
   }
 
+  /// Calculates the estimated days remaining.
+  String _getDaysRemainingString(LPGDevice device) {
+      final double gasRemainingInCylinder = (device.currentWeightGrams - device.emptyWeight).clamp(0.0, double.infinity);
+      final double avgDailyConsumptionApproximation = 500;
+
+      if (gasRemainingInCylinder <= 0) return 'Empty';
+      if (avgDailyConsumptionApproximation <= 0) return 'N/A (No consumption data)';
+
+      final double estimatedDays = gasRemainingInCylinder / avgDailyConsumptionApproximation;
+      if (estimatedDays < 1.0) {
+        return '${(estimatedDays * 24).toStringAsFixed(0)} hours';
+      } else {
+        return '${estimatedDays.toStringAsFixed(0)} days';
+      }
+  }
+
+  /// Determines the color of the gas level indicator based on the calculated percentage.
+  Color _getGasLevelColor(double percentage) {
+    if (percentage > 75) {
+      return Colors.green.shade600;
+    } else if (percentage > 50) {
+      return Colors.lightGreen.shade400;
+    } else if (percentage > 25) {
+      return Colors.orange.shade600;
+    } else {
+      return Colors.red.shade600;
+    }
+  }
+
   /// Checks if a device is low on gas and triggers a notification if needed.
   /// Prevents spamming notifications for the same low-gas event.
   void _checkAndNotifyLowGas(LPGDevice device) async {
@@ -109,22 +138,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
         });
       }
     }
-  }
-
-  /// Helper to get the days remaining string for notification body.
-  String _getDaysRemainingString(LPGDevice device) {
-      final double gasRemainingInCylinder = (device.currentWeightGrams - device.emptyWeight).clamp(0.0, double.infinity);
-      final double avgDailyConsumptionApproximation = 500; // Example: 500 grams/day if no historical average is directly accessible here
-
-      if (gasRemainingInCylinder <= 0) return 'Empty';
-      if (avgDailyConsumptionApproximation <= 0) return 'N/A (No consumption data)';
-
-      final double estimatedDays = gasRemainingInCylinder / avgDailyConsumptionApproximation;
-      if (estimatedDays < 1.0) {
-        return '${(estimatedDays * 24).toStringAsFixed(0)} hours';
-      } else {
-        return '${estimatedDays.toStringAsFixed(0)} days';
-      }
   }
 
   @override
@@ -215,6 +228,8 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                     device.fullWeight,
                   );
                   final Color gasLevelColor = _getGasLevelColor(gasPercentage);
+                  final double currentWeightKg = (device.currentWeightGrams / 1000).clamp(0.0, double.infinity);
+
 
                   return Card(
                     margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -237,6 +252,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
                           children: [
+                            // Icon color based on gas level
                             Icon(Icons.propane_tank, size: 40, color: gasLevelColor),
                             const SizedBox(width: 16),
                             Expanded(
@@ -252,13 +268,27 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
+                                  // NEW: Display Gas Percentage
                                   Text(
-                                    'Current Weight: ${(device.currentWeightGrams / 1000).toStringAsFixed(2)} kg',
-                                    style: const TextStyle(fontSize: 16),
+                                    'Gas Level: ${gasPercentage.toStringAsFixed(1)}%',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: gasLevelColor, // Color coded based on gas level
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // NEW: Display Current Weight
+                                  Text(
+                                    'Current Weight: ${currentWeightKg.toStringAsFixed(2)} kg',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: gasLevelColor, // Color coded based on gas level
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    // FIXED: Corrected DateFormat pattern to use 'yyyy'
                                     'Last Updated: ${device.timestamp != null ? DateFormat('MMM dd, yyyy - HH:mm').format(device.timestamp!.toDate().toLocal()) : 'N/A'}',
                                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                                   ),
@@ -291,19 +321,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
         child: const Icon(Icons.add),
       ),
     );
-  }
-
-  /// Determines the color of the gas level indicator based on the calculated percentage.
-  Color _getGasLevelColor(double percentage) {
-    if (percentage > 75) {
-      return Colors.green.shade600;
-    } else if (percentage > 50) {
-      return Colors.lightGreen.shade400;
-    } else if (percentage > 25) {
-      return Colors.orange.shade600;
-    } else {
-      return Colors.red.shade600;
-    }
   }
 
   /// Shows a dialog to confirm device deletion.
