@@ -4,13 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-import 'package:lpg_app/models/lpg_device.dart'; // Using lpg_app
-import 'package:lpg_app/screens/device_monitoring_screen.dart'; // Using lpg_app
-import 'package:lpg_app/screens/settings_screen.dart'; // Using lpg_app
-import 'package:lpg_app/services/auth_service.dart'; // Using lpg_app
-import 'package:lpg_app/services/firestore_service.dart'; // Using lpg_app
-import 'package:lpg_app/services/notification_service.dart'; // Using lpg_app
-import 'package:lpg_app/screens/add_device_screen.dart'; // NEW: Import the existing AddDeviceScreen
+import 'package:lpg_app/models/lpg_device.dart';
+import 'package:lpg_app/screens/device_monitoring_screen.dart';
+import 'package:lpg_app/screens/settings_screen.dart';
+import 'package:lpg_app/services/auth_service.dart';
+import 'package:lpg_app/services/firestore_service.dart';
+import 'package:lpg_app/services/notification_service.dart';
+import 'package:lpg_app/screens/add_device_screen.dart';
 
 class LPGDeviceListScreen extends StatefulWidget {
   const LPGDeviceListScreen({super.key});
@@ -37,14 +37,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
     _currentUser = _authService.getCurrentUser();
 
     if (_currentUser == null) {
-      // In a real app, you might navigate to AuthScreen if currentUser is null
-      // For this context, we assume it's handled by SplashScreen or app routing.
       debugPrint('LPGDeviceListScreen initialized with null user. This might indicate a routing issue.');
-      // WidgetsBinding.instance.addPostFrameCallback((_) {
-      //   if (mounted) {
-      //     Navigator.of(context).pushReplacementNamed('/auth');
-      //   }
-      // });
       return;
     }
 
@@ -137,8 +130,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
   @override
   Widget build(BuildContext context) {
     if (_currentUser == null) {
-      // This case should ideally be handled by the SplashScreen or initial routing,
-      // but as a fallback, show a progress indicator.
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -267,16 +258,8 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Gas Level: ${gasPercentage.toStringAsFixed(1)}%',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: gasLevelColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Last Updated: ${device.timestamp != null ? DateFormat('MMM dd, yyyy - HH:mm').format(device.timestamp!.toLocal()) : 'N/A'}',
+                                    // FIXED: Corrected DateFormat pattern to use 'yyyy'
+                                    'Last Updated: ${device.timestamp != null ? DateFormat('MMM dd, yyyy - HH:mm').format(device.timestamp!.toDate().toLocal()) : 'N/A'}',
                                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                                   ),
                                 ],
@@ -297,7 +280,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
           );
         },
       ),
-      // FIXED: Navigate to the existing AddDeviceScreen
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.of(context).push(

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart'; // For DocumentSnapshot
-import 'package:intl/intl.dart'; // For date formatting
-
+import 'package:lpg_app/models/lpg_device.dart';
 import 'package:lpg_app/services/firestore_service.dart';
-import 'package:lpg_app/models/lpg_device.dart'; // Import LPGDevice model
-import 'package:lpg_app/screens/history_screen.dart'; // Import HistoryScreen
+import 'package:lpg_app/screens/history_screen.dart';
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Ensure Timestamp is recognized
 
 class DeviceMonitoringScreen extends StatefulWidget {
   final String deviceId;
@@ -34,14 +34,12 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
   }
 
-  /// Calculates the gas percentage based on current, empty, and full weights.
-  /// Ensures the percentage is clamped between 0 and 100 to avoid invalid values.
-  ///
-  /// [currentWeightGrams]: The current weight of the cylinder (LPG + cylinder).
-  /// [emptyWeight]: The weight of the empty cylinder.
-  /// [fullWeight]: The weight of the full cylinder (LPG + cylinder).
-  /// Returns the gas percentage as a double.
+  /// Calculates the gas percentage.
   double _calculateGasPercentage(double currentWeightGrams, double emptyWeight, double fullWeight) {
+    currentWeightGrams = currentWeightGrams.clamp(0.0, double.infinity);
+    emptyWeight = emptyWeight.clamp(0.0, double.infinity);
+    fullWeight = fullWeight.clamp(0.0, double.infinity);
+
     final double actualGasWeight = currentWeightGrams - emptyWeight;
     final double gasCapacity = fullWeight - emptyWeight;
 
@@ -52,10 +50,23 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
     return percentage.clamp(0.0, 100.0);
   }
 
+  /// Calculates the estimated days remaining.
+  String _getDaysRemainingString(LPGDevice device) {
+    final double gasRemainingInCylinder = (device.currentWeightGrams - device.emptyWeight).clamp(0.0, double.infinity);
+    final double avgDailyConsumptionApproximation = 500.0;
+
+    if (gasRemainingInCylinder <= 0) return 'Empty';
+    if (avgDailyConsumptionApproximation <= 0) return 'N/A (No consumption data)';
+
+    final double estimatedDays = gasRemainingInCylinder / avgDailyConsumptionApproximation;
+    if (estimatedDays < 1.0) {
+      return '${(estimatedDays * 24).toStringAsFixed(0)} hours';
+    } else {
+      return '${estimatedDays.toStringAsFixed(0)} days';
+    }
+  }
+
   /// Determines the color of the gas level indicator based on the calculated percentage.
-  ///
-  /// [percentage]: The gas percentage (0-100).
-  /// Returns a [Color] indicating the gas level.
   Color _getGasLevelColor(double percentage) {
     if (percentage > 75) {
       return Colors.green.shade600;
@@ -66,6 +77,21 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
     } else {
       return Colors.red.shade600;
     }
+  }
+
+  /// Helper function to safely format a Timestamp or DateTime to a local string.
+  String _formatTimestampForDisplay(dynamic dateInput, {String format = 'MMM dd, yyyy - HH:mm'}) {
+    DateTime? dateTime;
+    if (dateInput is Timestamp) {
+      dateTime = dateInput.toDate();
+    } else if (dateInput is DateTime) {
+      dateTime = dateInput;
+    }
+
+    if (dateTime != null) {
+      return DateFormat(format).format(dateTime.toLocal());
+    }
+    return 'N/A';
   }
 
   @override
@@ -92,110 +118,156 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<LPGDevice>( // Changed from DocumentSnapshot to LPGDevice
+      body: StreamBuilder<LPGDevice>(
         stream: _firestoreService.getDeviceStream(widget.deviceId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            // Handle error, e.g., if the device document was not found
-            return Center(child: Text('Error: ${snapshot.error}. Device may have been deleted.'));
+            return Center(child: Text('Error: ${snapshot.error}'));
           }
-          if (!snapshot.hasData || snapshot.data == null) {
-            return const Center(child: Text('No data for this device.'));
+          if (!snapshot.hasData) {
+            return const Center(child: Text('Device data not found.'));
           }
 
-          final LPGDevice device = snapshot.data!; // Now directly an LPGDevice object
-
-          // Use device's properties
-          final double currentWeightGrams = device.currentWeightGrams;
-          final double emptyWeight = device.emptyWeight;
-          final double fullWeight = device.fullWeight;
-          // FIXED: timestamp is already DateTime? from the model
-          final DateTime? lastUpdatedTimestamp = device.timestamp; 
-
-          final double gasPercentage = _calculateGasPercentage(currentWeightGrams, emptyWeight, fullWeight);
+          final LPGDevice device = snapshot.data!;
+          final double gasPercentage = _calculateGasPercentage(
+            device.currentWeightGrams,
+            device.emptyWeight,
+            device.fullWeight,
+          );
+          
+          final double currentWeightKg = (device.currentWeightGrams / 1000).clamp(0.0, double.infinity);
+          final String daysRemaining = _getDaysRemainingString(device);
           final Color gasLevelColor = _getGasLevelColor(gasPercentage);
-          double gasRemainingGrams = (currentWeightGrams - emptyWeight).clamp(0.0, double.infinity);
 
-          return Padding(
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                const SizedBox(height: 20),
+                CircularPercentIndicator(
+                  radius: 120.0,
+                  lineWidth: 18.0,
+                  percent: gasPercentage / 100.0,
+                  center: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.propane_tank,
+                        size: 70.0,
+                        color: gasLevelColor,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${gasPercentage.toStringAsFixed(1)}%',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 30.0),
+                      ),
+                    ],
                   ),
+                  footer: Padding(
+                    padding: const EdgeInsets.only(top: 20.0),
+                    child: Text(
+                      'Gas Level for ${device.name}',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.teal.shade800,
+                      ),
+                    ),
+                  ),
+                  backgroundColor: Colors.grey.shade300,
+                  progressColor: gasLevelColor,
+                  circularStrokeCap: CircularStrokeCap.round,
+                ),
+                const SizedBox(height: 30),
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                  color: Colors.teal.shade50,
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
                       children: [
-                        Icon(
-                          Icons.propane_tank,
-                          size: 150,
-                          color: gasLevelColor,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '${gasPercentage.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: gasLevelColor,
+                        Icon(Icons.scale, color: Colors.teal.shade700, size: 30),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Text(
+                            'Current Weight: ${currentWeightKg.toStringAsFixed(2)} kg',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
                           ),
                         ),
-                        Text(
-                          '${(gasRemainingGrams / 1000).toStringAsFixed(2)} kg remaining',
-                          style: TextStyle(
-                            fontSize: 22,
-                            color: gasLevelColor.withOpacity(0.8),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        // Display last updated timestamp
-                        if (lastUpdatedTimestamp != null)
-                          Text(
-                            'Last updated: ${DateFormat('MMM dd, yyyy - HH:mm:ss').format(lastUpdatedTimestamp.toLocal())}',
-                            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                          )
-                        else
-                          Text(
-                            'Last updated: N/A', // Fallback if timestamp is null
-                            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                          ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 15),
                 Card(
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                  color: Colors.teal.shade50,
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, color: Colors.teal.shade700, size: 30),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Text(
+                            'Estimated Days Remaining: $daysRemaining',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  // Using the new helper for Last Updated
+                  'Last Updated: ${_formatTimestampForDisplay(device.timestamp, format: 'MMM dd, yyyy - HH:mm:ss')}',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 30),
+                
+                // Device Details Card
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Device Details:',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal.shade700,
-                          ),
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.teal.shade700, size: 30),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Device Details',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.teal.shade900,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 10),
+                        const Divider(height: 20, thickness: 1, color: Colors.grey),
                         _buildDetailRow('Device Name:', device.name),
                         _buildDetailRow('Device ID:', device.id),
+                        _buildDetailRow('Owner ID:', device.ownerId),
                         _buildDetailRow('Empty Weight:', '${(device.emptyWeight / 1000).toStringAsFixed(2)} kg'),
                         _buildDetailRow('Full Weight:', '${(device.fullWeight / 1000).toStringAsFixed(2)} kg'),
+                        // Using the new helper for Added On
+                        _buildDetailRow('Added On:', _formatTimestampForDisplay(device.createdAt)),
                       ],
                     ),
                   ),
@@ -208,23 +280,32 @@ class _DeviceMonitoringScreenState extends State<DeviceMonitoringScreen> {
     );
   }
 
+  /// Helper widget to build a row for device details.
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          SizedBox(
+            width: 120, // Fixed width for labels
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 16),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.black54,
+              ),
+              softWrap: true,
             ),
           ),
         ],
