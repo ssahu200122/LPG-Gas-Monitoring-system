@@ -1,67 +1,60 @@
-import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Authentication
+// lib/services/auth_service.dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:lpg_app/services/firestore_service.dart'; // Import FirestoreService
 
-// A service class to handle all Firebase Authentication related operations.
 class AuthService {
-  // Get an instance of FirebaseAuth to interact with the authentication service.
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+  final FirestoreService _firestoreService =  FirestoreService(); // Use const constructor
 
-  // Constructor for AuthService. Made `const` as it has no mutable state.
-   AuthService();
+  // Stream of authenticated user changes
+  // This is the getter that `main.dart` will now correctly use
+  Stream<User?> get userChanges => _firebaseAuth.authStateChanges();
 
-  /// Signs in a user with the given email and password.
-  ///
-  /// [email]: The user's email address.
-  /// [password]: The user's password.
-  /// Returns the [User] object if successful.
-  /// Throws [FirebaseAuthException] on authentication errors (e.g., wrong password, user not found).
-  /// Throws a generic [Exception] for other unexpected errors.
-  Future<User?> signIn(String email, String password) async {
-    try {
-      UserCredential result = await _firebaseAuth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result.user; // Return the authenticated user
-    } on FirebaseAuthException {
-      rethrow; // Re-throw the FirebaseAuthException for the UI to handle specifically.
-    } catch (e) {
-      // Catch any other unexpected errors during the sign-in process.
-      throw Exception('Failed to sign in: $e');
-    }
+  // Get current user (synchronous check)
+  User? getCurrentUser() {
+    return _firebaseAuth.currentUser;
   }
 
-  /// Signs up a new user with the given email and password.
-  ///
-  /// [email]: The new user's email address.
-  /// [password]: The new user's password.
-  /// Returns the newly created [User] object if successful.
-  /// Throws [FirebaseAuthException] on sign-up errors (e.g., weak password, email already in use).
-  /// Throws a generic [Exception] for other unexpected errors.
+  /// Sign up with email and password
   Future<User?> signUp(String email, String password) async {
     try {
-      UserCredential result = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result.user; // Return the newly created user
-    } on FirebaseAuthException {
-      rethrow; // Re-throw the FirebaseAuthException for the UI to handle specifically.
+      UserCredential result = await _firebaseAuth.createUserWithEmailAndPassword(email: email, password: password);
+      User? user = result.user;
+
+      if (user != null) {
+        // Create user profile in Firestore immediately after successful signup
+        await _firestoreService.createUserProfile(user.uid, user.email ?? '');
+      }
+      return user;
+    } on FirebaseAuthException catch (e) {
+      // Handle Firebase specific errors
+      throw Exception(e.message);
     } catch (e) {
-      // Catch any other unexpected errors during the sign-up process.
+      // Handle other generic errors
       throw Exception('Failed to sign up: $e');
     }
   }
 
-  /// Signs out the current authenticated user.
-  /// This will clear the user's session.
-  Future<void> signOut() async {
-    await _firebaseAuth.signOut();
+  /// Sign in with email and password
+  Future<User?> signIn(String email, String password) async {
+    try {
+      UserCredential result = await _firebaseAuth.signInWithEmailAndPassword(email: email, password: password);
+      return result.user;
+    } on FirebaseAuthException catch (e) {
+      // Handle Firebase specific errors
+      throw Exception(e.message);
+    } catch (e) {
+      // Handle other generic errors
+      throw Exception('Failed to sign in: $e');
+    }
   }
 
-  /// Retrieves the current authenticated [User].
-  ///
-  /// Returns the [User] object if a user is currently signed in, otherwise returns `null`.
-  User? getCurrentUser() {
-    return _firebaseAuth.currentUser;
+  /// Sign out
+  Future<void> signOut() async {
+    try {
+      await _firebaseAuth.signOut();
+    } catch (e) {
+      throw Exception('Failed to sign out: $e');
+    }
   }
 }

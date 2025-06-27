@@ -1,53 +1,48 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Required for Timestamp type in fromMap
 
-// Represents an LPG device with its properties and current status.
 class LPGDevice {
-  final String id; // The unique ID of the device (typically ESP32 MAC address/Firestore Document ID)
-  final String name; // A user-friendly name for the device
-  final double emptyWeight; // Weight of the empty LPG cylinder in grams
-  final double fullWeight; // Weight of the full LPG cylinder in grams
-  final double currentWeightGrams; // Current weight reading from the load cell in grams
-  final DateTime timestamp; // Timestamp of the last weight update
+  final String id;
+  final String name;
+  final String ownerId; // Owner's Firebase UID
+  final double emptyWeight; // grams
+  final double fullWeight; // grams
+  final double currentWeightGrams; // Last reported weight in grams
+  final DateTime? timestamp; // Last updated timestamp, converted to DateTime
 
-  // Constructor for the LPGDevice class. All fields are required.
   LPGDevice({
     required this.id,
     required this.name,
+    required this.ownerId,
     required this.emptyWeight,
     required this.fullWeight,
     required this.currentWeightGrams,
-    required this.timestamp,
+    this.timestamp,
   });
 
-  /// Factory constructor to create an [LPGDevice] instance from a Firestore data map
-  /// and the document ID.
-  /// This is the primary way to deserialize device data coming from Firestore.
-  ///
-  /// [id]: The unique document ID (String) from Firestore.
-  /// [data]: The map containing the document's fields (Map<String, dynamic>).
+  /// Factory constructor to create an LPGDevice instance from a Firestore DocumentSnapshot data map.
   factory LPGDevice.fromMap(String id, Map<String, dynamic> data) {
     return LPGDevice(
-      id: id, // Assign the document ID passed separately
-      name: data['name'] ?? 'Unnamed Device', // Provide a default if 'name' is null or missing
-      emptyWeight: (data['emptyWeight'] ?? 0.0).toDouble(), // Convert to double, default 0.0
-      fullWeight: (data['fullWeight'] ?? 0.0).toDouble(), // Convert to double, default 0.0
-      currentWeightGrams: (data['current_weight_grams'] ?? 0.0).toDouble(), // Convert to double, default 0.0
-      // Cast Firestore Timestamp to a Dart DateTime object.
-      // It's safe to use `as Timestamp` because Firestore ensures 'timestamp' is a Timestamp.
-      timestamp: (data['timestamp'] as Timestamp).toDate(), 
+      id: id,
+      name: data['name'] ?? 'Unnamed Device',
+      ownerId: data['ownerId'] ?? '',
+      emptyWeight: (data['emptyWeight'] ?? 0.0).toDouble(),
+      fullWeight: (data['fullWeight'] ?? 0.0).toDouble(),
+      currentWeightGrams: (data['current_weight_grams'] ?? 0.0).toDouble(),
+      // Convert Firestore Timestamp to Dart DateTime
+      timestamp: (data['timestamp'] as Timestamp?)?.toDate(), 
     );
   }
 
-  /// Converts an [LPGDevice] object into a [Map<String, dynamic>]
-  /// suitable for writing to Firestore.
+  /// Converts the LPGDevice instance to a map for Firestore storage.
   Map<String, dynamic> toMap() {
     return {
       'name': name,
+      'ownerId': ownerId,
       'emptyWeight': emptyWeight,
       'fullWeight': fullWeight,
       'current_weight_grams': currentWeightGrams,
-      // Convert Dart DateTime to Firestore Timestamp for storage.
-      'timestamp': Timestamp.fromDate(timestamp), 
+      // Store DateTime as Firestore Timestamp
+      'timestamp': timestamp != null ? Timestamp.fromDate(timestamp!) : FieldValue.serverTimestamp(), 
     };
   }
 }

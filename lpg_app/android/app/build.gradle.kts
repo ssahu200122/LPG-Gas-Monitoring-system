@@ -48,7 +48,7 @@ android {
         minSdk = 23 // Recommend minSdk 21 or higher for modern Android development and desugaring
         
         // Target SDK version, usually picked from flutter.targetSdkVersion
-        targetSdk = 33
+        targetSdk = 35
         
         // Version codes and names from Flutter
         versionCode = flutter.versionCode
