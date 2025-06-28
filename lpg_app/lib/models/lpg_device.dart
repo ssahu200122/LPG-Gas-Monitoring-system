@@ -1,5 +1,5 @@
 // lib/models/lpg_device.dart
-import 'package:cloud_firestore/cloud_firestore.dart'; // Ensure this is imported for Timestamp
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LPGDevice {
   final String id;
@@ -8,8 +8,8 @@ class LPGDevice {
   final double emptyWeight;
   final double fullWeight;
   final double currentWeightGrams;
-  final Timestamp? timestamp; // Last updated timestamp
-  final Timestamp? createdAt; // NEW: Timestamp for when the device was added
+  final Timestamp? timestamp;
+  final Timestamp? createdAt;
 
   LPGDevice({
     required this.id,
@@ -19,7 +19,7 @@ class LPGDevice {
     required this.fullWeight,
     required this.currentWeightGrams,
     this.timestamp,
-    this.createdAt, // Ensure this is in the constructor
+    this.createdAt,
   });
 
   // Factory constructor to create an LPGDevice instance from a Firestore map
@@ -31,8 +31,8 @@ class LPGDevice {
       emptyWeight: (data['emptyWeight'] as num?)?.toDouble() ?? 0.0,
       fullWeight: (data['fullWeight'] as num?)?.toDouble() ?? 0.0,
       currentWeightGrams: (data['current_weight_grams'] as num?)?.toDouble() ?? 0.0,
-      timestamp: data['timestamp'] as Timestamp?, // Correctly cast as Timestamp?
-      createdAt: data['createdAt'] as Timestamp?, // Ensure createdAt is parsed here
+      timestamp: data['timestamp'] as Timestamp?,
+      createdAt: data['createdAt'] as Timestamp?,
     );
   }
 
@@ -45,7 +45,20 @@ class LPGDevice {
       'fullWeight': fullWeight,
       'current_weight_grams': currentWeightGrams,
       'timestamp': timestamp,
-      'createdAt': createdAt, // Ensure createdAt is included here
+      'createdAt': createdAt,
     };
   }
+
+  // NEW: Override equality (==) and hashCode for proper object comparison, especially in DropdownButton
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true; // If they are the exact same instance
+
+    // Check if 'other' is an LPGDevice and if their 'id's are equal
+    return other is LPGDevice &&
+           other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode; // Hash code based on the unique 'id'
 }

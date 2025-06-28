@@ -48,6 +48,7 @@ dependencies:
   async: ^2.13.0
   fl_chart: ^1.0.0
   percent_indicator: ^4.2.5
+  salomon_bottom_bar: ^3.3.2
 
 dev_dependencies:
   flutter_test:

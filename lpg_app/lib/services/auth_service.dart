@@ -1,55 +1,51 @@
-// lib/services/auth_service.dart
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:lpg_app/services/firestore_service.dart'; // Import FirestoreService
 
 class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
-  final FirestoreService _firestoreService =  FirestoreService(); // Use const constructor
 
-  // Stream of authenticated user changes
-  // This is the getter that `main.dart` will now correctly use
+  /// Stream of authentication state changes.
+  /// Emits a [User] when the user signs in or out, or null if no user is signed in.
   Stream<User?> get userChanges => _firebaseAuth.authStateChanges();
 
-  // Get current user (synchronous check)
+  /// Get the current authenticated [User].
+  /// Returns null if no user is currently signed in.
   User? getCurrentUser() {
     return _firebaseAuth.currentUser;
   }
 
-  /// Sign up with email and password
-  Future<User?> signUp(String email, String password) async {
+  /// Sign in with email and password.
+  Future<UserCredential> signInWithEmailAndPassword(String email, String password) async {
     try {
-      UserCredential result = await _firebaseAuth.createUserWithEmailAndPassword(email: email, password: password);
-      User? user = result.user;
-
-      if (user != null) {
-        // Create user profile in Firestore immediately after successful signup
-        await _firestoreService.createUserProfile(user.uid, user.email ?? '');
-      }
-      return user;
-    } on FirebaseAuthException catch (e) {
-      // Handle Firebase specific errors
-      throw Exception(e.message);
+      UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return userCredential;
+    } on FirebaseAuthException {
+      rethrow; // Rethrow FirebaseAuthException to be caught by the UI
     } catch (e) {
-      // Handle other generic errors
-      throw Exception('Failed to sign up: $e');
-    }
-  }
-
-  /// Sign in with email and password
-  Future<User?> signIn(String email, String password) async {
-    try {
-      UserCredential result = await _firebaseAuth.signInWithEmailAndPassword(email: email, password: password);
-      return result.user;
-    } on FirebaseAuthException catch (e) {
-      // Handle Firebase specific errors
-      throw Exception(e.message);
-    } catch (e) {
-      // Handle other generic errors
+      // Handle other potential errors during sign-in
       throw Exception('Failed to sign in: $e');
     }
   }
 
-  /// Sign out
+  /// Sign up with email and password.
+  Future<UserCredential> signUpWithEmailAndPassword(String email, String password) async {
+    try {
+      UserCredential userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return userCredential;
+    } on FirebaseAuthException {
+      rethrow; // Rethrow FirebaseAuthException to be caught by the UI
+    } catch (e) {
+      // Handle other potential errors during sign-up
+      throw Exception('Failed to sign up: $e');
+    }
+  }
+
+  /// Sign out the current user.
   Future<void> signOut() async {
     try {
       await _firebaseAuth.signOut();

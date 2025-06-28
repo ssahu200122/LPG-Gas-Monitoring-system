@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:lpg_app/models/lpg_device.dart';
 import 'package:lpg_app/screens/device_monitoring_screen.dart';
@@ -26,7 +27,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
   User? _currentUser;
 
   double _userLowGasThreshold = 20.0;
-  Map<String, bool> _notifiedDevices = {};
+  Map<String, bool> _notifiedDevices = {}; // false means not yet notified for low gas
 
   @override
   void initState() {
@@ -42,7 +43,60 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
     }
 
     _listenForUserProfileChanges();
+    // Use addPostFrameCallback to ensure permissions are requested AFTER the screen has built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestNotificationPermissionsIfNeeded();
+    });
   }
+
+  /// Requests notification permissions if they haven't been granted.
+  Future<void> _requestNotificationPermissionsIfNeeded() async {
+    if (!mounted) return;
+    
+    // We remove the initial delay here, as addPostFrameCallback already ensures the frame is built.
+    // await Future.delayed(const Duration(milliseconds: 500)); 
+
+    final status = await _notificationService.getPermissionStatus();
+    debugPrint('LPGDeviceListScreen: Current notification permission status from _requestNotificationPermissionsIfNeeded: $status');
+
+    if (status == PermissionStatus.denied || status == PermissionStatus.restricted) {
+      debugPrint('LPGDeviceListScreen: Notification permissions not granted or restricted. Requesting now.');
+      final bool granted = await _notificationService.requestPermissions();
+      if (mounted) {
+        if (granted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Notification permissions granted!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification permissions denied. Alerts may not be shown.'),
+              action: SnackBarAction(
+                label: 'Open Settings',
+                onPressed: openAppSettings,
+              ),
+            ),
+          );
+        }
+      }
+    } else if (status == PermissionStatus.permanentlyDenied) {
+      debugPrint('LPGDeviceListScreen: Notification permissions permanently denied. Guiding user to settings.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notification permissions permanently denied. Please enable them in app settings.'),
+            action: SnackBarAction(
+              label: 'Open Settings',
+              onPressed: openAppSettings,
+            ),
+          ),
+        );
+      }
+    } else {
+      debugPrint('LPGDeviceListScreen: Notification permissions already granted.');
+    }
+  }
+
 
   /// Listens for real-time updates to the user's profile to get the latest low gas threshold.
   void _listenForUserProfileChanges() {
@@ -52,9 +106,9 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
         setState(() {
           _userLowGasThreshold = (userData['lowGasThresholdPercent'] as num?)?.toDouble() ?? 20.0;
         });
-        debugPrint('User low gas threshold updated to: $_userLowGasThreshold%');
+        debugPrint('LPGDeviceListScreen: User low gas threshold updated to: $_userLowGasThreshold%');
       } else {
-        debugPrint('User profile snapshot data is null or does not exist.');
+        debugPrint('LPGDeviceListScreen: User profile snapshot data is null or does not exist.');
       }
     });
   }
@@ -105,7 +159,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
   }
 
   /// Checks if a device is low on gas and triggers a notification if needed.
-  /// Prevents spamming notifications for the same low-gas event.
   void _checkAndNotifyLowGas(LPGDevice device) async {
     final double gasPercentage = _calculateGasPercentage(
       device.currentWeightGrams,
@@ -113,30 +166,44 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
       device.fullWeight,
     );
 
-    final String notificationId = 'low_gas_${device.id}'; // Unique ID for each device's notification
+    final String notificationId = 'low_gas_${device.id}';
+    debugPrint('LPGDeviceListScreen: _checkAndNotifyLowGas for ${device.name} (ID: ${device.id}) - Gas: ${gasPercentage.toStringAsFixed(1)}%, Threshold: $_userLowGasThreshold%');
+    debugPrint('LPGDeviceListScreen: Current notifiedDevices state for $notificationId: ${_notifiedDevices[notificationId]}');
 
-    if (gasPercentage <= _userLowGasThreshold) {
-      if (!(_notifiedDevices[notificationId] ?? false)) { // If not already notified for this low state
-        debugPrint('Gas level for ${device.name} is ${gasPercentage.toStringAsFixed(1)}%, which is below $_userLowGasThreshold%. Sending notification.');
-        await _notificationService.showNotification(
-          id: device.id.hashCode, // Use device ID's hash code for unique notification ID
-          title: 'Low Gas Alert: ${device.name}',
-          body: 'Your LPG cylinder for ${device.name} is at ${gasPercentage.toStringAsFixed(1)}%.'
-                ' Estimated ${_getDaysRemainingString(device)} remaining.', // Add days remaining to body
-        );
-        setState(() {
-          _notifiedDevices[notificationId] = true; // Mark as notified
-        });
+
+    final status = await _notificationService.getPermissionStatus();
+    debugPrint('LPGDeviceListScreen: Permission status before checking for notification: $status');
+
+    if (status == PermissionStatus.granted) {
+      if (gasPercentage <= _userLowGasThreshold) {
+        if (!(_notifiedDevices[notificationId] ?? false)) {
+          debugPrint('LPGDeviceListScreen: Gas below threshold AND not yet notified. Sending notification for ${device.name}.');
+          await _notificationService.showNotification(
+            id: device.id.hashCode,
+            title: 'Low Gas Alert: ${device.name}',
+            body: 'Your LPG cylinder for ${device.name} is at ${gasPercentage.toStringAsFixed(1)}%.'
+                  ' Estimated ${_getDaysRemainingString(device)} remaining.',
+          );
+          setState(() {
+            _notifiedDevices[notificationId] = true;
+          });
+        } else {
+          debugPrint('LPGDeviceListScreen: Gas below threshold but already notified for ${device.name}. Skipping.');
+        }
+      } else {
+        // Gas level is above threshold
+        if (_notifiedDevices[notificationId] ?? false) {
+          debugPrint('LPGDeviceListScreen: Gas level for ${device.name} is above threshold. Resetting notification state.');
+          await _notificationService.cancelNotification(device.id.hashCode);
+          setState(() {
+            _notifiedDevices[notificationId] = false;
+          });
+        } else {
+           debugPrint('LPGDeviceListScreen: Gas level for ${device.name} is above threshold and not previously notified. Skipping.');
+        }
       }
     } else {
-      // If gas level is above threshold, clear notification state for this device
-      if (_notifiedDevices[notificationId] ?? false) {
-        debugPrint('Gas level for ${device.name} is ${gasPercentage.toStringAsFixed(1)}%, which is above $_userLowGasThreshold%. Cancelling notification state.');
-        await _notificationService.cancelNotification(device.id.hashCode); // Cancel active notification if applicable
-        setState(() {
-          _notifiedDevices[notificationId] = false; // Reset notified state
-        });
-      }
+      debugPrint('LPGDeviceListScreen: Notification not sent for ${device.name} because permissions are not granted. Status: $status');
     }
   }
 
@@ -211,6 +278,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
 
               final devices = deviceListSnapshot.data!;
 
+              // Ensure notification check runs after the frame is built
               WidgetsBinding.instance.addPostFrameCallback((_) {
                  for (var device in devices) {
                    _checkAndNotifyLowGas(device);
@@ -252,7 +320,6 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
                           children: [
-                            // Icon color based on gas level
                             Icon(Icons.propane_tank, size: 40, color: gasLevelColor),
                             const SizedBox(width: 16),
                             Expanded(
@@ -268,23 +335,21 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  // NEW: Display Gas Percentage
                                   Text(
                                     'Gas Level: ${gasPercentage.toStringAsFixed(1)}%',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: gasLevelColor, // Color coded based on gas level
+                                      color: gasLevelColor,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  // NEW: Display Current Weight
                                   Text(
                                     'Current Weight: ${currentWeightKg.toStringAsFixed(2)} kg',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: gasLevelColor, // Color coded based on gas level
+                                      color: gasLevelColor,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -310,7 +375,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -318,8 +383,14 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
             ),
           );
         },
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Device'),
+        backgroundColor: Theme.of(context).floatingActionButtonTheme.backgroundColor,
+        foregroundColor: Theme.of(context).floatingActionButtonTheme.foregroundColor,
+        elevation: 6.0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -342,7 +413,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Delete', style: TextStyle(color: Colors.white)),
               onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pop();
                 if (_currentUser != null) {
                   try {
                     await _firestoreService.deleteDevice(_currentUser!.uid, device.id);
@@ -351,9 +422,7 @@ class _LPGDeviceListScreenState extends State<LPGDeviceListScreen> {
                         SnackBar(content: Text('${device.name} deleted successfully!')),
                       );
                     }
-                    // Cancel any pending low gas notification for this device
                     await _notificationService.cancelNotification(device.id.hashCode);
-                    // Remove from notified devices map
                     _notifiedDevices.remove('low_gas_${device.id}');
                   } catch (e) {
                     if (mounted) {
